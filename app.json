@@ -1,0 +1,25 @@
+{
+  "name": "BILAL-GPT",
+  "description": "AI-powered chatbot with beautiful web interface",
+  "repository": "https://github.com/yourusername/bilal-gpt",
+  "logo": "https://cdn-icons-png.flaticon.com/512/8943/8943377.png",
+  "keywords": ["ai", "chatbot", "gpt", "whatsapp"],
+  "stack": "heroku-24",
+  "env": {
+    "BOT_MODE": {
+      "description": "Bot operation mode (production/development)",
+      "value": "production"
+    }
+  },
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "eco"
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "heroku/nodejs"
+    }
+  ]
+}
