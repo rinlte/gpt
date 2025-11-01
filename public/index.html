@@ -268,6 +268,7 @@
             word-wrap: break-word;
             line-height: 1.6;
             font-size: 15px;
+            white-space: pre-wrap;
         }
 
         .message.user .message-content {
@@ -282,9 +283,16 @@
             color: #e0e0e0;
         }
 
+        .message.bot .message-content.error {
+            background: rgba(255, 50, 50, 0.1);
+            border-color: rgba(255, 50, 50, 0.3);
+            color: #ff6b6b;
+        }
+
         .typing-indicator {
             display: none;
             margin-bottom: 25px;
+            animation: slideUp 0.4s ease-out;
         }
 
         .typing-indicator.active {
@@ -421,6 +429,18 @@
             z-index: 1;
         }
 
+        .error-notice {
+            background: rgba(255, 50, 50, 0.1);
+            border: 1px solid rgba(255, 50, 50, 0.3);
+            border-radius: 12px;
+            padding: 15px;
+            margin: 20px auto;
+            max-width: 600px;
+            color: #ff6b6b;
+            text-align: center;
+            animation: slideUp 0.4s ease-out;
+        }
+
         @media (max-width: 768px) {
             .container {
                 max-width: 100%;
@@ -535,7 +555,9 @@
         const sendBtn = document.getElementById('sendBtn');
         const typingIndicator = document.getElementById('typingIndicator');
 
-        function addMessage(content, isUser) {
+        let isProcessing = false;
+
+        function addMessage(content, isUser, isError = false) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
             
@@ -547,7 +569,7 @@
             avatar.textContent = isUser ? '👤' : '🤖';
             
             const contentDiv = document.createElement('div');
-            contentDiv.className = 'message-content';
+            contentDiv.className = `message-content ${isError ? 'error' : ''}`;
             contentDiv.textContent = content;
             
             wrapper.appendChild(avatar);
@@ -559,8 +581,12 @@
         }
 
         async function sendMessage(message = null) {
+            if (isProcessing) return;
+
             const text = message || userInput.value.trim();
             if (!text) return;
+
+            isProcessing = true;
 
             const welcomeMsg = chatContainer.querySelector('.welcome-message');
             if (welcomeMsg) welcomeMsg.remove();
@@ -574,6 +600,8 @@
             chatContainer.scrollTop = chatContainer.scrollHeight;
 
             try {
+                console.log('Sending request to server...');
+                
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: {
@@ -582,36 +610,49 @@
                     body: JSON.stringify({ message: text })
                 });
 
+                console.log('Response status:', response.status);
+
                 const data = await response.json();
+                console.log('Response data:', data);
 
                 typingIndicator.classList.remove('active');
 
-                if (data.response) {
+                if (data.success && data.response) {
                     addMessage(data.response, false);
+                } else if (data.error) {
+                    addMessage(data.error, false, true);
                 } else {
-                    addMessage('I apologize, but I could not generate a response at this moment. Please try again.', false);
+                    addMessage('I apologize, but I could not generate a response. Please try again.', false, true);
                 }
             } catch (error) {
+                console.error('Fetch error:', error);
                 typingIndicator.classList.remove('active');
-                addMessage('An error occurred while processing your request. Please try again later.', false);
-                console.error('Error:', error);
+                addMessage('Network error occurred. Please check your connection and try again.', false, true);
             }
 
+            isProcessing = false;
             sendBtn.disabled = false;
             userInput.focus();
         }
 
         function useSuggestion(text) {
+            userInput.value = text;
             sendMessage(text);
         }
 
         sendBtn.addEventListener('click', () => sendMessage());
         
         userInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
+            if (e.key === 'Enter' && !isProcessing) {
                 sendMessage();
             }
         });
+
+        // Test server connection on load
+        fetch('/health')
+            .then(res => res.json())
+            .then(data => console.log('Server health:', data))
+            .catch(err => console.error('Server connection error:', err));
 
         userInput.focus();
     </script>
