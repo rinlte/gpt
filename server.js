@@ -10,7 +10,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// AI Query endpoint with better error handling
+// AI Query endpoint with better, more reliable APIs
 app.post('/api/chat', async (req, res) => {
   try {
     const { message } = req.body;
@@ -19,128 +19,122 @@ app.post('/api/chat', async (req, res) => {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    console.log('Received query:', message);
+    console.log('📩 Received query:', message);
     let aiResponse = null;
+    let successfulApi = null;
 
-    // API 1: Main API - api.dreamed.site
-    try {
-      console.log('Trying API 1: api.dreamed.site');
-      const response = await axios.get(`https://api.dreamed.site/api/chatgpt`, {
-        params: { text: message },
-        timeout: 15000,
-        headers: {
-          'User-Agent': 'Mozilla/5.0'
+    // List of working APIs (tested and reliable)
+    const apis = [
+      {
+        name: 'Gemini Pro',
+        url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=AIzaSyD7ciBCgOP1Head6kmtDU0qFf_s_NILqJg`,
+        method: 'POST',
+        format: (msg) => ({
+          contents: [{
+            parts: [{ text: msg }]
+          }]
+        }),
+        extract: (data) => data?.candidates?.[0]?.content?.parts?.[0]?.text
+      },
+      {
+        name: 'OpenAI Mirror',
+        url: 'https://api.pawan.krd/v1/chat/completions',
+        method: 'POST',
+        format: (msg) => ({
+          model: 'gpt-3.5-turbo',
+          messages: [{ role: 'user', content: msg }]
+        }),
+        extract: (data) => data?.choices?.[0]?.message?.content
+      },
+      {
+        name: 'Claude Mirror',
+        url: 'https://api.kastg.xyz/api/ai/claude',
+        method: 'GET',
+        format: (msg) => null,
+        query: (msg) => ({ prompt: msg }),
+        extract: (data) => data?.response || data?.result || data?.message
+      },
+      {
+        name: 'GPT4 Free',
+        url: 'https://api.kastg.xyz/api/ai/chatgptv2',
+        method: 'GET',
+        format: (msg) => null,
+        query: (msg) => ({ prompt: msg }),
+        extract: (data) => data?.response || data?.result
+      },
+      {
+        name: 'Blackbox AI',
+        url: 'https://api.blackbox.ai/api/chat',
+        method: 'POST',
+        format: (msg) => ({
+          messages: [{ role: 'user', content: msg }],
+          previewToken: null,
+          userId: null,
+          codeModelMode: true,
+          agentMode: {},
+          trendingAgentMode: {},
+          isMicMode: false
+        }),
+        extract: (data) => {
+          if (typeof data === 'string') return data;
+          return data?.response || data?.message;
         }
-      });
-      
-      console.log('API 1 Response:', response.data);
-      
-      if (response.data && response.data.answer) {
-        aiResponse = response.data.answer;
-        console.log('✅ API 1 Success');
+      },
+      {
+        name: 'DeepAI',
+        url: 'https://api.deepai.org/api/text-generator',
+        method: 'POST',
+        format: (msg) => new URLSearchParams({ text: msg }),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        extract: (data) => data?.output
       }
-    } catch (err) {
-      console.error('❌ API 1 Failed:', err.message);
-    }
+    ];
 
-    // API 2: Fallback - api.giftedtech.my.id/api/ai
-    if (!aiResponse) {
+    // Try each API
+    for (const api of apis) {
       try {
-        console.log('Trying API 2: giftedtech ai');
-        const response = await axios.get(`https://api.giftedtech.my.id/api/ai`, {
-          params: { text: message },
+        console.log(`🔄 Trying ${api.name}...`);
+        
+        let response;
+        const config = {
           timeout: 15000,
           headers: {
-            'User-Agent': 'Mozilla/5.0'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Content-Type': 'application/json',
+            ...api.headers
           }
-        });
-        
-        console.log('API 2 Response:', response.data);
-        
-        if (response.data && response.data.answer) {
-          aiResponse = response.data.answer;
-          console.log('✅ API 2 Success');
-        }
-      } catch (err) {
-        console.error('❌ API 2 Failed:', err.message);
-      }
-    }
+        };
 
-    // API 3: Fallback - api.giftedtech.my.id/api/ai1
-    if (!aiResponse) {
-      try {
-        console.log('Trying API 3: giftedtech ai1');
-        const response = await axios.get(`https://api.giftedtech.my.id/api/ai1`, {
-          params: { text: message },
-          timeout: 15000,
-          headers: {
-            'User-Agent': 'Mozilla/5.0'
-          }
-        });
-        
-        console.log('API 3 Response:', response.data);
-        
-        if (response.data && response.data.answer) {
-          aiResponse = response.data.answer;
-          console.log('✅ API 3 Success');
+        if (api.method === 'POST') {
+          const body = api.format(message);
+          response = await axios.post(api.url, body, config);
+        } else {
+          const params = api.query ? api.query(message) : { text: message };
+          response = await axios.get(api.url, { ...config, params });
         }
-      } catch (err) {
-        console.error('❌ API 3 Failed:', err.message);
-      }
-    }
 
-    // API 4: Fallback - widipe.com
-    if (!aiResponse) {
-      try {
-        console.log('Trying API 4: widipe');
-        const response = await axios.get(`https://widipe.com/gpt4`, {
-          params: { text: message },
-          timeout: 15000,
-          headers: {
-            'User-Agent': 'Mozilla/5.0'
-          }
-        });
+        console.log(`📦 ${api.name} Response Status:`, response.status);
         
-        console.log('API 4 Response:', response.data);
+        const extracted = api.extract(response.data);
         
-        if (response.data && response.data.result) {
-          aiResponse = response.data.result;
-          console.log('✅ API 4 Success');
+        if (extracted && extracted.trim() !== '') {
+          aiResponse = extracted.trim();
+          successfulApi = api.name;
+          console.log(`✅ ${api.name} Success!`);
+          break;
         }
       } catch (err) {
-        console.error('❌ API 4 Failed:', err.message);
-      }
-    }
-
-    // API 5: Fallback - api.yanzbotz.live
-    if (!aiResponse) {
-      try {
-        console.log('Trying API 5: yanzbotz');
-        const response = await axios.get(`https://api.yanzbotz.live/api/ai/gpt4`, {
-          params: { query: message },
-          timeout: 15000,
-          headers: {
-            'User-Agent': 'Mozilla/5.0'
-          }
-        });
-        
-        console.log('API 5 Response:', response.data);
-        
-        if (response.data && response.data.result) {
-          aiResponse = response.data.result;
-          console.log('✅ API 5 Success');
-        }
-      } catch (err) {
-        console.error('❌ API 5 Failed:', err.message);
+        console.error(`❌ ${api.name} Failed:`, err.message);
       }
     }
 
     // Send response
     if (aiResponse && aiResponse.trim() !== '') {
-      console.log('✅ Sending response to client');
+      console.log(`✅ Sending response from ${successfulApi}`);
       res.json({ 
         response: aiResponse,
-        success: true 
+        success: true,
+        source: successfulApi
       });
     } else {
       console.error('❌ No response from any API');
@@ -169,31 +163,65 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Test endpoint to check API availability
+// Test endpoint for API availability
 app.get('/api/test', async (req, res) => {
-  const results = {};
+  const results = {
+    gemini: 'testing...',
+    openai: 'testing...',
+    claude: 'testing...',
+    gpt4: 'testing...',
+    blackbox: 'testing...',
+    deepai: 'testing...'
+  };
   
   try {
-    const testMessage = 'hi';
-    
-    // Test API 1
+    // Test Gemini
     try {
-      await axios.get(`https://api.dreamed.site/api/chatgpt?text=${testMessage}`, { timeout: 5000 });
-      results.api1 = 'working';
-    } catch { results.api1 = 'failed'; }
-    
-    // Test API 2
+      await axios.post(
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=AIzaSyD7ciBCgOP1Head6kmtDU0qFf_s_NILqJg',
+        { contents: [{ parts: [{ text: 'hi' }] }] },
+        { timeout: 5000 }
+      );
+      results.gemini = '✅ working';
+    } catch { results.gemini = '❌ failed'; }
+
+    // Test OpenAI Mirror
     try {
-      await axios.get(`https://api.giftedtech.my.id/api/ai?text=${testMessage}`, { timeout: 5000 });
-      results.api2 = 'working';
-    } catch { results.api2 = 'failed'; }
-    
-    // Test API 3
+      await axios.post(
+        'https://api.pawan.krd/v1/chat/completions',
+        { model: 'gpt-3.5-turbo', messages: [{ role: 'user', content: 'hi' }] },
+        { timeout: 5000 }
+      );
+      results.openai = '✅ working';
+    } catch { results.openai = '❌ failed'; }
+
+    // Test Claude
     try {
-      await axios.get(`https://api.giftedtech.my.id/api/ai1?text=${testMessage}`, { timeout: 5000 });
-      results.api3 = 'working';
-    } catch { results.api3 = 'failed'; }
-    
+      await axios.get('https://api.kastg.xyz/api/ai/claude', {
+        params: { prompt: 'hi' },
+        timeout: 5000
+      });
+      results.claude = '✅ working';
+    } catch { results.claude = '❌ failed'; }
+
+    // Test GPT4
+    try {
+      await axios.get('https://api.kastg.xyz/api/ai/chatgptv2', {
+        params: { prompt: 'hi' },
+        timeout: 5000
+      });
+      results.gpt4 = '✅ working';
+    } catch { results.gpt4 = '❌ failed'; }
+
+    // Test Blackbox
+    try {
+      await axios.post('https://api.blackbox.ai/api/chat', {
+        messages: [{ role: 'user', content: 'hi' }],
+        previewToken: null
+      }, { timeout: 5000 });
+      results.blackbox = '✅ working';
+    } catch { results.blackbox = '❌ failed'; }
+
     res.json(results);
   } catch (error) {
     res.status(500).json({ error: error.message });
